@@ -24,5 +24,9 @@
     "baseUrl": "."
   },
   "exclude": ["node_modules"],
-  "include": ["./src/**/*.ts"]
+  "include": ["./src/**/*.ts"],
+  "typeRoots": [
+    "node_modules/@types/",
+    "./typing-stubs"
+  ]
 }
