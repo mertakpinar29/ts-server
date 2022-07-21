@@ -1,8 +1,7 @@
 import "reflect-metadata";
-import { MikroORM } from "@mikro-orm/core";
 import { COOKIE_NAME, __prod__ } from "./constants";
 //import { Post } from './entities/Post'
-import mikroOrmConfig from "./mikro-orm.config";
+import typeOrmConfig from "./type-orm.config";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
@@ -15,8 +14,7 @@ import connectRedis from "connect-redis";
 import { MyContext } from "./types";
 
 const main = async () => {
-  const orm = await MikroORM.init(mikroOrmConfig);
-  await orm.getMigrator().up();
+  const orm = await typeOrmConfig.initialize();
 
   const app = express();
 
@@ -53,7 +51,7 @@ const main = async () => {
     }),
     // context defines object that is accessible from all resolvers
     context: ({ req, res }): MyContext => ({
-      em: orm.em.fork(),
+      orm,
       req,
       res,
       redis,
