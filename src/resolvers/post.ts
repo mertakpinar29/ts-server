@@ -3,10 +3,13 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
+  Int,
   Mutation,
   Query,
   Resolver,
+  Root,
   UseMiddleware,
 } from "type-graphql";
 import { MyContext } from "src/types";
@@ -20,11 +23,33 @@ class PostInput {
   text: string;
 }
 
-@Resolver()
+@Resolver(Post)
 export class PostResolver {
+  @FieldResolver(() => String)
+  textSnippet(@Root() root: Post) {
+    return root.text.slice(0, 50);
+  }
+
   @Query(() => [Post])
-  posts(): Promise<Post[]> {
-    return Post.find();
+  posts(
+    @Arg("limit", () => Int) limit: number,
+    // cursor will get the value of createdAt date of a post
+    // if cursor is passed, we will get the posts that created after the cursor
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Ctx() { orm }: MyContext
+  ): Promise<Post[]> {
+    const realLimit = Math.min(50, limit);
+    const qb = orm
+      .getRepository(Post)
+      .createQueryBuilder("p")
+      .orderBy('"createdAt"', "DESC")
+      .take(realLimit);
+
+    if (cursor) {
+      qb.where('"createdAt" < :cursor', { cursor: new Date(parseInt(cursor)) });
+    }
+
+    return qb.getMany();
   }
 
   @Query(() => Post, { nullable: true })

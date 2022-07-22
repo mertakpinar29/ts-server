@@ -3,13 +3,11 @@ import { Post } from "./entities/Post";
 import dotenv from "dotenv";
 import { User } from "./entities/User";
 import { DataSource } from "typeorm";
+import path from "path";
 dotenv.config();
 
 export default new DataSource({
-  // migrations: {
-  //     path: path.join(__dirname, "./migrations"),
-  //     pattern: /^[\w-]+\d+\.[tj]s$/,
-  // },
+  migrations: [path.join(__dirname, "./migrations/*")],
   entities: [Post, User],
   database: "lireddit2",
   username: process.env.DB_USER,

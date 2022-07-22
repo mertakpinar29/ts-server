@@ -15,6 +15,7 @@ import { MyContext } from "./types";
 
 const main = async () => {
   const orm = await typeOrmConfig.initialize();
+  //await orm.runMigrations();
 
   const app = express();
 
