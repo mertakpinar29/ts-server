@@ -62,7 +62,9 @@ export class PostResolver {
       json_build_object(
         'id', u.id,
         'username', u.username,
-        'email', u.email
+        'email', u.email,
+        'createdAt', u."createdAt",
+        'updatedAt', u."updatedAt"
         ) creator
       from post p
       inner join public.user u on u.id = p."creatorId"
