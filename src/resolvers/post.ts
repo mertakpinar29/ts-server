@@ -15,6 +15,7 @@ import {
 } from "type-graphql";
 import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
+import { Updoot } from "../entities/Updoot";
 
 @InputType()
 class PostInput {
@@ -39,18 +40,81 @@ export class PostResolver {
     return root.text.slice(0, 50);
   }
 
+  @Mutation(() => Boolean)
+  @UseMiddleware(isAuth)
+  async vote(
+    @Arg("postId", () => Int) postId: number,
+    @Arg("value", () => Int) value: number,
+    @Ctx() { req, orm }: MyContext
+  ) {
+    const isUpdoot = value !== -1;
+    const realValue = isUpdoot ? 1 : -1;
+    const { userId } = req.session;
+
+    const updoot = await Updoot.findOneBy({ postId, userId });
+
+    if (updoot && updoot.value !== realValue) {
+      await orm.transaction(async (transactionManager) => {
+        await transactionManager.query(
+          `
+          update updoot
+          set value = $1
+          where "postId" = $2 and "userId" = $3
+        `,
+          [realValue, postId, userId]
+        );
+
+        await transactionManager.query(
+          `
+          update post
+          set points = points + $1
+          where id = $2
+        `,
+          [2 * realValue, postId]
+        );
+      });
+    }
+    // has never voted before
+    else if (!updoot) {
+      /* Grouping updates into transaction gives us
+       the guarantee that if something goes wrong, 
+       none of the steps executed will take effect.
+      */
+      await orm.transaction(async (transactionManager) => {
+        await transactionManager.query(
+          `
+        insert into updoot ("userId", "postId", value)
+        values ($1, $2, $3);
+        `,
+          [userId, postId, realValue]
+        );
+
+        await transactionManager.query(
+          `
+        update post 
+        set points = points + $1
+        where id = $2
+        `,
+          [realValue, postId]
+        );
+      });
+    }
+
+    return true;
+  }
+
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
     // cursor will get the value of createdAt date of a post
     // if cursor is passed, we will get the posts that created after the cursor
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
-    @Ctx() { orm }: MyContext
+    @Ctx() { req, orm }: MyContext
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
-    const vars: any[] = [realLimitPlusOne];
+    const vars: any[] = [realLimitPlusOne, req.session.userId];
 
     if (cursor) {
       vars.push(new Date(parseInt(cursor)));
@@ -65,10 +129,15 @@ export class PostResolver {
         'email', u.email,
         'createdAt', u."createdAt",
         'updatedAt', u."updatedAt"
-        ) creator
+        ) creator,
+        ${
+          req.session.userId
+            ? '(select value from updoot where "userId" = $2 and "postId" = p.id) "voteStatus"'
+            : 'null as "voteStatus"'
+        }
       from post p
       inner join public.user u on u.id = p."creatorId"
-      ${cursor ? `where p."createdAt" < $2` : ""}
+      ${cursor ? `where p."createdAt" < $3` : ""}
       order by p."createdAt" DESC
       limit $1
     `,
