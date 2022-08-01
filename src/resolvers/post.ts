@@ -114,10 +114,16 @@ export class PostResolver {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
-    const vars: any[] = [realLimitPlusOne, req.session.userId];
+    const vars: any[] = [realLimitPlusOne];
 
+    if (req.session.userId) {
+      vars.push(req.session.userId);
+    }
+
+    let cursorIdx = 3;
     if (cursor) {
       vars.push(new Date(parseInt(cursor)));
+      cursorIdx = vars.length;
     }
 
     const posts = await orm.query(
@@ -137,28 +143,12 @@ export class PostResolver {
         }
       from post p
       inner join public.user u on u.id = p."creatorId"
-      ${cursor ? `where p."createdAt" < $3` : ""}
+      ${cursor ? `where p."createdAt" < $${cursorIdx}` : ""}
       order by p."createdAt" DESC
       limit $1
     `,
       vars
     );
-
-    // const qb = orm
-    //   .getRepository(Post)
-    //   .createQueryBuilder("p")
-    //   // selecting posts including creator field
-    //   .innerJoinAndSelect("p.creator", "u", "u.id = p.'creatorId'")
-    //   .orderBy('p."createdAt"', "DESC")
-    //   .take(realLimitPlusOne);
-
-    // if (cursor) {
-    //   qb.where('p."createdAt" < :cursor', {
-    //     cursor: new Date(parseInt(cursor)),
-    //   });
-    // }
-
-    //const posts = await qb.getMany();
 
     return {
       posts: posts.slice(0, realLimit),
@@ -167,8 +157,8 @@ export class PostResolver {
   }
 
   @Query(() => Post, { nullable: true })
-  post(@Arg("id") id: number): Promise<Post | null> {
-    return Post.findOneBy({ id });
+  post(@Arg("id", () => Int) id: number): Promise<Post | null> {
+    return Post.findOne({ where: { id }, relations: ["creator"] });
   }
 
   @Mutation(() => Post)
@@ -181,22 +171,35 @@ export class PostResolver {
   }
 
   @Mutation(() => Post, { nullable: true })
+  @UseMiddleware(isAuth)
   async updatePost(
     @Arg("id") id: number,
-    @Arg("title", { nullable: true }) title: string
+    @Arg("title") title: string,
+    @Arg("text") text: string,
+    @Ctx() { orm, req }: MyContext
   ): Promise<Post | null> {
-    const post = await Post.findOneBy({ id });
-    if (!post) return null;
-    if (typeof title != "undefined") {
-      await Post.update({ id }, { title });
-    }
-    return post;
+    const result = await orm
+      .createQueryBuilder()
+      .update(Post)
+      .set({ title, text })
+      .where('id = :id and "creatorId" = :creatorId', {
+        id,
+        creatorId: req.session.userId,
+      })
+      .returning("*")
+      .execute();
+
+    return result.raw[0];
   }
 
   @Mutation(() => Boolean)
-  async deletePost(@Arg("id") id: number): Promise<boolean> {
+  @UseMiddleware(isAuth)
+  async deletePost(
+    @Arg("id", () => Int) id: number,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
     try {
-      await Post.delete(id);
+      await Post.delete({ id, creatorId: req.session.userId });
       return true;
     } catch {
       return false;
