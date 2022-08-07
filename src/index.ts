@@ -12,6 +12,7 @@ import Redis from "ioredis";
 import session from "express-session";
 import connectRedis from "connect-redis";
 import { MyContext } from "./types";
+import { createUserLoader } from "./utils/createUserLoader";
 
 const main = async () => {
   const orm = await typeOrmConfig.initialize();
@@ -55,6 +56,7 @@ const main = async () => {
       req,
       res,
       redis,
+      userLoader: createUserLoader(),
     }),
   });
 
